@@ -9,6 +9,7 @@
 //! features = ["framework", "standard_framework"]
 //! ```
 mod commands;
+pub mod utils;
 
 use std::{
     collections::HashSet,
@@ -30,6 +31,7 @@ use commands::{
     math::*,
     meta::*,
     owner::*,
+    iota::*,
 };
 struct ShardManagerContainer;
 
@@ -50,7 +52,7 @@ impl EventHandler for Handler {
 }
 
 #[group]
-#[commands(multiply, ping, quit)]
+#[commands(multiply, ping, quit, generate_seed, get_node_info)]
 struct General;
 
 fn main() {
