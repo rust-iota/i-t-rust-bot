@@ -52,8 +52,13 @@ impl EventHandler for Handler {
 }
 
 #[group]
-#[commands(multiply, ping, quit, generate_seed, get_node_info)]
+#[commands(multiply, ping, quit)]
 struct General;
+
+#[group]
+#[prefixes("iota", "i")]
+#[commands(generate_seed, get_node_info)]
+struct Iota;
 
 fn main() {
     // This will load the environment variables located at `./.env`, relative to
@@ -90,7 +95,9 @@ fn main() {
         .configure(|c| c
             .owners(owners)
             .prefix("!"))
-        .group(&GENERAL_GROUP));
+        .group(&GENERAL_GROUP)
+        .group(&IOTA_GROUP));
+
 
     if let Err(why) = client.start() {
         error!("Client error: {:?}", why);
