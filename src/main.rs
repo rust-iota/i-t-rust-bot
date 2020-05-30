@@ -1,58 +1,96 @@
-use std::env;
+//! Requires the 'framework' feature flag be enabled in your project's
+//! `Cargo.toml`.
+//!
+//! This can be enabled by specifying the feature in the dependency section:
+//!
+//! ```toml
+//! [dependencies.serenity]
+//! git = "https://github.com/serenity-rs/serenity.git"
+//! features = ["framework", "standard_framework"]
+//! ```
+mod commands;
 
+use std::{
+    collections::HashSet,
+    env,
+    sync::Arc,
+};
 use serenity::{
-    model::{channel::Message, gateway::Ready},
+    client::bridge::gateway::ShardManager,
+    framework::{
+        StandardFramework,
+        standard::macros::group,
+    },
+    model::{event::ResumedEvent, gateway::Ready},
     prelude::*,
 };
+use log::{error, info};
+
+use commands::{
+    math::*,
+    meta::*,
+    owner::*,
+};
+struct ShardManagerContainer;
+
+impl TypeMapKey for ShardManagerContainer {
+    type Value = Arc<Mutex<ShardManager>>;
+}
 
 struct Handler;
 
 impl EventHandler for Handler {
-    // Set a handler for the `message` event - so that whenever a new message
-    // is received - the closure (or function) passed will be called.
-    //
-    // Event handlers are dispatched through a threadpool, and so multiple
-    // events can be dispatched simultaneously.
-    fn message(&self, ctx: Context, msg: Message) {
-        if msg.content == "!ping" {
-            // Sending a message can fail, due to a network error, an
-            // authentication error, or lack of permissions to post in the
-            // channel, so log to stdout when some error happens, with a
-            // description of it.
-            if let Err(why) = msg.channel_id.say(&ctx.http, "Pong!") {
-                println!("Error sending message: {:?}", why);
-            }
-        }
+    fn ready(&self, _: Context, ready: Ready) {
+        info!("Connected as {}", ready.user.name);
     }
 
-    // Set a handler to be called on the `ready` event. This is called when a
-    // shard is booted, and a READY payload is sent by Discord. This payload
-    // contains data like the current user's guild Ids, current user data,
-    // private channels, and more.
-    //
-    // In this case, just print what the current user's username is.
-    fn ready(&self, _: Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name);
+    fn resume(&self, _: Context, _: ResumedEvent) {
+        info!("Resumed");
     }
 }
 
+#[group]
+#[commands(multiply, ping, quit)]
+struct General;
+
 fn main() {
-    // Configure the client with your Discord bot token in the environment.
+    // This will load the environment variables located at `./.env`, relative to
+    // the CWD. See `./.env.example` for an example on how to structure this.
+    kankyo::load().expect("Failed to load .env file");
+
+    // Initialize the logger to use environment variables.
+    //
+    // In this case, a good default is setting the environment variable
+    // `RUST_LOG` to debug`.
+    env_logger::init();
+
     let token = env::var("DISCORD_TOKEN")
         .expect("Expected a token in the environment");
 
-    println!("token {}", token);
-
-    // Create a new instance of the Client, logging in as a bot. This will
-    // automatically prepend your bot token with "Bot ", which is a requirement
-    // by Discord for bot users.
     let mut client = Client::new(&token, Handler).expect("Err creating client");
 
-    // Finally, start a single shard, and start listening to events.
-    //
-    // Shards will automatically attempt to reconnect, and will perform
-    // exponential backoff until it reconnects.
+    {
+        let mut data = client.data.write();
+        data.insert::<ShardManagerContainer>(Arc::clone(&client.shard_manager));
+    }
+
+    let owners = match client.cache_and_http.http.get_current_application_info() {
+        Ok(info) => {
+            let mut set = HashSet::new();
+            set.insert(info.owner.id);
+
+            set
+        },
+        Err(why) => panic!("Couldn't get application info: {:?}", why),
+    };
+
+    client.with_framework(StandardFramework::new()
+        .configure(|c| c
+            .owners(owners)
+            .prefix("!"))
+        .group(&GENERAL_GROUP));
+
     if let Err(why) = client.start() {
-        println!("Client error: {:?}", why);
+        error!("Client error: {:?}", why);
     }
 }
